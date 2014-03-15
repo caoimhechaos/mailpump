@@ -1,0 +1,62 @@
+// Protobuf definitions for mailpump.
+package mailpump;
+
+// Representation of an e-mail, including important pieces of metadata.
+message MailMessage {
+	// Representation of an e-mail header.
+	message MailHeader {
+		required string name = 1;
+		repeated string value = 2;
+	}
+
+	// String representation of the IP address of the peer.
+	required string smtp_peer = 1;
+
+	// DNS reverse record of the peer, if any.
+	optional string smtp_peer_revdns = 2;
+
+	// TLS method information from the peer connection.
+	optional string smtp_peer_tls_info = 3;
+
+	// MAIL From parameter from the SMTP conversation.
+	required string smtp_from = 4;
+
+	// RCPT To parameter from the SMTP conversation.
+	required string smtp_to = 5;
+
+	// HELO parameter from the SMTP conversation.
+	required string smtp_helo = 6;
+
+	// Extracted Sender header from the mail headers, if any.
+	optional string sender_hdr = 7;
+
+	// Extracted From header from the e-mail headers.
+	required string from_hdr = 8;
+
+	// Extracted To header from the e-mail headers.
+	required string to_hdr = 9;
+
+	// Extracted CC header from the e-mail headers.
+	repeated string cc_hdrs = 10;
+
+	// Extracted message ID string form the e-mail headers.
+	required string msgid_hdr = 11;
+
+	// All extracted mail headers.
+	repeated MailHeader headers = 12;
+
+	// The full e-mail body.
+	optional bytes body = 13;
+}
+
+message MailSubmissionResult {
+	// SMTP error code to return (if appropriate).
+	optional int32 error_code = 1;
+
+	// Text representation of an error, if any.
+	optional string error_text = 2;
+}
+
+service MailSubmissionService {
+	rpc Send (MailMessage) returns (MailSubmissionResult);
+}
