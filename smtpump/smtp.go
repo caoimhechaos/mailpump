@@ -98,6 +98,7 @@ type SmtpConnection struct {
 	cb       SmtpReceiver
 	conn     *textproto.Conn
 	origconn net.Conn
+	userdata interface{}
 }
 
 // Create a new SMTP connection by doing the SMTP server-side handshake
@@ -311,4 +312,15 @@ func (self *SmtpConnection) setInactive() {
 // Indicate to the caller whether the connection is still active.
 func (self *SmtpConnection) IsActive() bool {
 	return self.active
+}
+
+// Set up userdata for the connection, which can be used to make
+// SmtpReceivers a bit more stateful.
+func (self *SmtpConnection) SetUserdata(data interface{}) {
+	self.userdata = data
+}
+
+// Retrieve the configured userdata for this connection.
+func (self *SmtpConnection) GetUserdata() interface{} {
+	return self.userdata
 }
