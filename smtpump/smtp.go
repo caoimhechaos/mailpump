@@ -35,6 +35,7 @@ package smtpump
 import (
 	"expvar"
 	"io"
+	"log"
 	"net"
 	"net/textproto"
 	"strings"
@@ -156,7 +157,7 @@ func (self *SmtpConnection) RespondWithRCode(code *SmtpReturnCode) {
 
 // Parse a line as a command and run the appropriate handlers.
 // This will block until all appropriate handlers have finished.
-func (self *SmtpConnection) handleCommand(command string) (ret SmtpReturnCode) {
+func (self *SmtpConnection) handleCommand(command string) SmtpReturnCode {
 	var cmd, params string
 	var splitdata []string = strings.SplitN(command, " ", 2)
 
@@ -172,60 +173,62 @@ func (self *SmtpConnection) handleCommand(command string) (ret SmtpReturnCode) {
 	case "HELO":
 	case "EHLO":
 		{
-			ret.Code = SMTP_NOT_IMPLEMENTED
-			ret.Message = "Your command was: HELO, parameter was: " + params
-			return
+			return self.cb.Helo(self, params)
 		}
 	case "MAIL":
 		{
-			// TODO: Parse from part.
-			ret.Code = SMTP_NOT_IMPLEMENTED
-			ret.Message = "Your command was: MAIL, parameter was: " + params
-			return
+			return self.cb.MailFrom(self, params)
 		}
 	case "RCPT":
 		{
-			// TODO: Parse from part.
-			ret.Code = SMTP_NOT_IMPLEMENTED
-			ret.Message = "Your command was: MAIL, parameter was: " + params
-			return
+			return self.cb.RcptTo(self, params)
 		}
 	case "DATA":
 		{
-			// TODO: Parse from part.
-			ret.Code = SMTP_NOT_IMPLEMENTED
-			ret.Message = "Your command was: DATA, parameter was: " + params
-			return
+			if len(params) > 0 {
+				var ret SmtpReturnCode
+				ret.Code = SMTP_PARAMETER_ERROR
+				ret.Message = "DATA doesn't take parameters"
+				return ret
+			}
+			return self.cb.Data(self, self.conn.DotReader())
 		}
 	case "ETRN":
 		{
-			// TODO: Parse from part.
-			ret.Code = SMTP_NOT_IMPLEMENTED
-			ret.Message = "Your command was: ETRN, parameter was: " + params
-			return
+			return self.cb.Etrn(self, params)
 		}
 	case "RSET":
 		{
-			// TODO: Parse from part.
-			ret.Code = SMTP_NOT_IMPLEMENTED
-			ret.Message = "Your command was: RSET, parameter was: " + params
-			return
+			if len(params) > 0 {
+				var ret SmtpReturnCode
+				ret.Code = SMTP_PARAMETER_ERROR
+				ret.Message = "RSET doesn't take parameters"
+				return ret
+			}
+			return self.cb.Reset(self)
 		}
 	case "QUIT":
 		{
-			ret.Code = SMTP_CLOSING
-			ret.Message = "Your command was: QUIT, parameter was: " + params
-			ret.Terminate = true
-			return
+			if len(params) > 0 {
+				var ret SmtpReturnCode
+				ret.Code = SMTP_PARAMETER_ERROR
+				ret.Message = "QUIT doesn't take parameters"
+				return ret
+			}
+			return self.cb.Quit(self)
 		}
 	default:
 		{
+			var ret SmtpReturnCode
 			ret.Code = SMTP_NOT_IMPLEMENTED
 			ret.Message = "Command " + cmd + " is not supported."
+			log.Print("Received unknown command ", cmd, " from client ",
+				self.origconn.RemoteAddr())
+			return ret
 		}
 	}
 
-	return ret
+	return SmtpReturnCode{}
 }
 
 // Do a server-side SMTP handshake on the wrapped connection and handle

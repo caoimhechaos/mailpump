@@ -34,8 +34,11 @@ package main
 
 import (
 	"io"
+	"log"
 	"net"
+	"reflect"
 
+	"ancient-solutions.com/mailpump"
 	"ancient-solutions.com/mailpump/smtpump"
 )
 
@@ -43,14 +46,63 @@ type smtpCallback struct {
 	smtpump.SmtpReceiver
 }
 
-// FIXME: STUB.
+func getConnectionData(conn *smtpump.SmtpConnection) *mailpump.MailMessage {
+	var msg *mailpump.MailMessage
+	var val reflect.Value
+	var ud interface{}
+	var ok bool
+
+	ud = conn.GetUserdata()
+	val = reflect.ValueOf(ud)
+	if !val.IsValid() || val.IsNil() {
+		msg = new(mailpump.MailMessage)
+		conn.SetUserdata(msg)
+		return msg
+	}
+
+	msg, ok = ud.(*mailpump.MailMessage)
+	if !ok {
+		log.Print("Connection userdata is not a MailMessage!")
+		return nil
+	}
+
+	if msg == nil {
+		msg = new(mailpump.MailMessage)
+		conn.SetUserdata(msg)
+	}
+
+	return msg
+}
+
+// Store all available information about the peer in the message structure
+// for SPAM analysis.
 func (self smtpCallback) ConnectionOpened(
 	conn *smtpump.SmtpConnection, peer net.Addr) (
 	ret smtpump.SmtpReturnCode) {
+	var host string
+	var msg *mailpump.MailMessage = getConnectionData(conn)
+	var err error
+
+	if msg == nil {
+		ret.Code = smtpump.SMTP_LOCALERR
+		ret.Message = "Unable to allocate connection structures."
+		ret.Terminate = true
+		return
+	}
+
+	host, _, err = net.SplitHostPort(peer.String())
+	if err == nil {
+		msg.SmtpPeer = &host
+	} else {
+		host = peer.String()
+		msg.SmtpPeer = &host
+	}
+	msg.SmtpPeerRevdns, _ = net.LookupAddr(host)
+	conn.Respond(smtpump.SMTP_READY, true, msg.String())
 	return
 }
 
-// FIXME: STUB.
+// Ignore disconnections.
 func (self smtpCallback) ConnectionClosed(conn *smtpump.SmtpConnection) {
 }
 
@@ -58,6 +110,8 @@ func (self smtpCallback) ConnectionClosed(conn *smtpump.SmtpConnection) {
 func (self smtpCallback) Helo(
 	conn *smtpump.SmtpConnection, hostname string) (
 	ret smtpump.SmtpReturnCode) {
+	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
+	ret.Message = "Not yet implemented."
 	return
 }
 
@@ -65,6 +119,8 @@ func (self smtpCallback) Helo(
 func (self smtpCallback) MailFrom(
 	conn *smtpump.SmtpConnection, sender string) (
 	ret smtpump.SmtpReturnCode) {
+	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
+	ret.Message = "Not yet implemented."
 	return
 }
 
@@ -72,6 +128,8 @@ func (self smtpCallback) MailFrom(
 func (self smtpCallback) RcptTo(
 	conn *smtpump.SmtpConnection, recipient string) (
 	ret smtpump.SmtpReturnCode) {
+	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
+	ret.Message = "Not yet implemented."
 	return
 }
 
@@ -79,29 +137,40 @@ func (self smtpCallback) RcptTo(
 func (self smtpCallback) Data(
 	conn *smtpump.SmtpConnection, contents io.Reader) (
 	ret smtpump.SmtpReturnCode) {
+	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
+	ret.Message = "Not yet implemented."
 	return
 }
 
 // FIXME: STUB.
 func (self smtpCallback) DataEnd(conn *smtpump.SmtpConnection) (
 	ret smtpump.SmtpReturnCode) {
+	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
+	ret.Message = "Not yet implemented."
 	return
 }
 
 // FIXME: STUB.
 func (self smtpCallback) Etrn(conn *smtpump.SmtpConnection, domain string) (
 	ret smtpump.SmtpReturnCode) {
+	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
+	ret.Message = "Not yet implemented."
 	return
 }
 
 // FIXME: STUB.
 func (self smtpCallback) Reset(conn *smtpump.SmtpConnection) (
 	ret smtpump.SmtpReturnCode) {
+	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
+	ret.Message = "Not yet implemented."
 	return
 }
 
 // FIXME: STUB.
 func (self smtpCallback) Quit(conn *smtpump.SmtpConnection) (
 	ret smtpump.SmtpReturnCode) {
+	ret.Code = smtpump.SMTP_CLOSING
+	ret.Message = "See you later!"
+	ret.Terminate = true
 	return
 }
