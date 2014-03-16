@@ -128,13 +128,22 @@ func (self *SmtpConnection) RespondWithError(code int, explanation string) {
 // Send a message back to the client with the given SMTP response code and
 // text.
 func (self *SmtpConnection) Respond(code int, continued bool, text string) {
-	var sep string
+	var lines []string = strings.Split(text, "\n")
+	var sep, line string
+	var i int
+
 	if continued {
 		sep = "-"
 	} else {
 		sep = " "
 	}
-	self.conn.PrintfLine("%03d%s%s", code, sep, text)
+	for i, line = range lines {
+		if i != len(lines)-1 {
+			self.conn.PrintfLine("%03d-%s", code, line)
+		} else {
+			self.conn.PrintfLine("%03d%s%s", code, sep, line)
+		}
+	}
 	smtp_bytes_out.Add(int64(len(text) + 6))
 }
 
