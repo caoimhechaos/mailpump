@@ -80,10 +80,13 @@ type SmtpReceiver interface {
 	RcptTo(conn *SmtpConnection, recipient string) SmtpReturnCode
 
 	// Invoked when a DATA command is received.
-	Data(conn *SmtpConnection, contents io.ReadCloser) SmtpReturnCode
+	Data(conn *SmtpConnection, contents io.Reader) SmtpReturnCode
 
 	// Invoked when the DATA command finished.
 	DataEnd(conn *SmtpConnection) SmtpReturnCode
+
+	// Invoked when an ETRN command was received.
+	Etrn(conn *SmtpConnection, domain string) SmtpReturnCode
 
 	// Invoked when an RSET command was received.
 	Reset(conn *SmtpConnection) SmtpReturnCode

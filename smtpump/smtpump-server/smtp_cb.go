@@ -77,13 +77,19 @@ func (self smtpCallback) RcptTo(
 
 // FIXME: STUB.
 func (self smtpCallback) Data(
-	conn *smtpump.SmtpConnection, contents io.ReadCloser) (
+	conn *smtpump.SmtpConnection, contents io.Reader) (
 	ret smtpump.SmtpReturnCode) {
 	return
 }
 
 // FIXME: STUB.
 func (self smtpCallback) DataEnd(conn *smtpump.SmtpConnection) (
+	ret smtpump.SmtpReturnCode) {
+	return
+}
+
+// FIXME: STUB.
+func (self smtpCallback) Etrn(conn *smtpump.SmtpConnection, domain string) (
 	ret smtpump.SmtpReturnCode) {
 	return
 }
