@@ -167,12 +167,29 @@ func (self *SmtpConnection) handleCommand(command string) SmtpReturnCode {
 	cmd = strings.ToUpper(splitdata[0])
 	if len(splitdata) > 1 {
 		params = splitdata[1]
+	} else {
+		params = ""
 	}
 
 	switch cmd {
 	case "HELO":
+		{
+			if len(params) == 0 {
+				var ret SmtpReturnCode
+				ret.Code = SMTP_PARAMETER_ERROR
+				ret.Message = "HELO requires a hostname parameter"
+				return ret
+			}
+			return self.cb.Helo(self, params)
+		}
 	case "EHLO":
 		{
+			if len(params) == 0 {
+				var ret SmtpReturnCode
+				ret.Code = SMTP_PARAMETER_ERROR
+				ret.Message = "EHLO requires a hostname parameter"
+				return ret
+			}
 			return self.cb.Helo(self, params)
 		}
 	case "MAIL":
