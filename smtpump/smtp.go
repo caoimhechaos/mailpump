@@ -72,7 +72,7 @@ type SmtpReceiver interface {
 	ConnectionClosed(conn *SmtpConnection)
 
 	// Invoked when a HELO is received from the server.
-	Helo(conn *SmtpConnection, hostname string) SmtpReturnCode
+	Helo(conn *SmtpConnection, hostname string, esmtp bool) SmtpReturnCode
 
 	// Invoked when a MAIL From command is received.
 	MailFrom(conn *SmtpConnection, sender string) SmtpReturnCode
@@ -180,7 +180,7 @@ func (self *SmtpConnection) handleCommand(command string) SmtpReturnCode {
 				ret.Message = "HELO requires a hostname parameter"
 				return ret
 			}
-			return self.cb.Helo(self, params)
+			return self.cb.Helo(self, params, false)
 		}
 	case "EHLO":
 		{
@@ -190,7 +190,7 @@ func (self *SmtpConnection) handleCommand(command string) SmtpReturnCode {
 				ret.Message = "EHLO requires a hostname parameter"
 				return ret
 			}
-			return self.cb.Helo(self, params)
+			return self.cb.Helo(self, params, true)
 		}
 	case "MAIL":
 		{

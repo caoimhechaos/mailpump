@@ -48,6 +48,8 @@ type smtpCallback struct {
 	smtpump.SmtpReceiver
 }
 
+var features = []string{"ETRN", "8BITMIME", "DSN"}
+
 // String representation of an email regular expression.
 var email_re string = "([\\w\\+-\\.]+(?:%[\\w\\+-\\.]+)?@[\\w\\+-\\.]+)"
 
@@ -120,13 +122,27 @@ func (self smtpCallback) ConnectionClosed(conn *smtpump.SmtpConnection) {
 
 // Just save the host name and respond.
 func (self smtpCallback) Helo(
-	conn *smtpump.SmtpConnection, hostname string) (
+	conn *smtpump.SmtpConnection, hostname string, esmtp bool) (
 	ret smtpump.SmtpReturnCode) {
 	var msg *mailpump.MailMessage = getConnectionData(conn)
+	var response string = fmt.Sprintf("Hello, %s! Nice to meet you.",
+		hostname)
 	msg.SmtpHelo = &hostname
 
+	if esmtp {
+		var pos int
+		var capa string
+		conn.Respond(smtpump.SMTP_COMPLETED, true, response)
+
+		for pos, capa = range features {
+			conn.Respond(smtpump.SMTP_COMPLETED,
+				pos < (len(features)-1), capa)
+		}
+		return
+	}
+
 	ret.Code = smtpump.SMTP_COMPLETED
-	ret.Message = fmt.Sprintf("Hello, %s! Nice to meet you.", hostname)
+	ret.Message = response
 	return
 }
 
