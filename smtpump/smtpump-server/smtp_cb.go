@@ -33,6 +33,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -106,12 +107,15 @@ func (self smtpCallback) ConnectionOpened(
 func (self smtpCallback) ConnectionClosed(conn *smtpump.SmtpConnection) {
 }
 
-// FIXME: STUB.
+// Just save the host name and respond.
 func (self smtpCallback) Helo(
 	conn *smtpump.SmtpConnection, hostname string) (
 	ret smtpump.SmtpReturnCode) {
-	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
-	ret.Message = "Not yet implemented."
+	var msg *mailpump.MailMessage = getConnectionData(conn)
+	msg.SmtpHelo = &hostname
+
+	ret.Code = smtpump.SMTP_COMPLETED
+	ret.Message = fmt.Sprintf("Hello, %s! Nice to meet you.", hostname)
 	return
 }
 
