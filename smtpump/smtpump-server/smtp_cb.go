@@ -38,6 +38,7 @@ import (
 	"log"
 	"net"
 	"reflect"
+	"regexp"
 
 	"ancient-solutions.com/mailpump"
 	"ancient-solutions.com/mailpump/smtpump"
@@ -46,6 +47,17 @@ import (
 type smtpCallback struct {
 	smtpump.SmtpReceiver
 }
+
+// String representation of an email regular expression.
+var email_re string = "([\\w\\+-\\.]+(?:%[\\w\\+-\\.]+)?@[\\w\\+-\\.]+)"
+
+// RE match to extract the mail address from a MAIL From command.
+var from_re *regexp.Regexp = regexp.MustCompile(
+	"^[Ff][Rr][Oo][Mm]:\\s*(?:<" + email_re + ">|" + email_re + ")$")
+
+// RE match to extract the mail address from a RCPT To command.
+var rcpt_re *regexp.Regexp = regexp.MustCompile(
+	"^[Tt][Oo]:\\s*(?:<" + email_re + ">|" + email_re + ")$")
 
 func getConnectionData(conn *smtpump.SmtpConnection) *mailpump.MailMessage {
 	var msg *mailpump.MailMessage
@@ -99,7 +111,6 @@ func (self smtpCallback) ConnectionOpened(
 		msg.SmtpPeer = &host
 	}
 	msg.SmtpPeerRevdns, _ = net.LookupAddr(host)
-	conn.Respond(smtpump.SMTP_READY, true, msg.String())
 	return
 }
 
@@ -119,21 +130,79 @@ func (self smtpCallback) Helo(
 	return
 }
 
-// FIXME: STUB.
+// Ensure HELO has been set, then record From.
 func (self smtpCallback) MailFrom(
 	conn *smtpump.SmtpConnection, sender string) (
 	ret smtpump.SmtpReturnCode) {
-	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
-	ret.Message = "Not yet implemented."
+	var msg *mailpump.MailMessage = getConnectionData(conn)
+	var matches []string
+	var addr string
+
+	if msg.SmtpHelo == nil {
+		ret.Code = smtpump.SMTP_BAD_SEQUENCE
+		ret.Message = "Polite people say Hello first!"
+		return
+	}
+
+	matches = from_re.FindStringSubmatch(sender)
+	if len(matches) == 0 {
+		if len(sender) > 0 {
+			log.Print("Received unparseable address: ", sender)
+		}
+		ret.Code = smtpump.SMTP_PARAMETER_NOT_IMPLEMENTED
+		ret.Message = "Address not understood, sorry."
+		return
+	}
+
+	for _, addr = range matches {
+		if len(addr) > 0 {
+			msg.SmtpFrom = new(string)
+			*msg.SmtpFrom = addr
+		}
+	}
+	ret.Code = smtpump.SMTP_COMPLETED
+	ret.Message = "Ok."
 	return
 }
 
-// FIXME: STUB.
+// Ensure HELO and MAIL have been set, then record To.
 func (self smtpCallback) RcptTo(
 	conn *smtpump.SmtpConnection, recipient string) (
 	ret smtpump.SmtpReturnCode) {
-	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
-	ret.Message = "Not yet implemented."
+	var msg *mailpump.MailMessage = getConnectionData(conn)
+	var matches []string
+	var addr string
+	var realaddr string
+
+	if msg.SmtpHelo == nil {
+		ret.Code = smtpump.SMTP_BAD_SEQUENCE
+		ret.Message = "Polite people say Hello first!"
+		return
+	}
+
+	if msg.SmtpFrom == nil {
+		ret.Code = smtpump.SMTP_BAD_SEQUENCE
+		ret.Message = "Need MAIL command before RCPT."
+	}
+
+	matches = rcpt_re.FindStringSubmatch(recipient)
+	if len(matches) == 0 {
+		if len(recipient) > 0 {
+			log.Print("Received unparseable address: ", recipient)
+		}
+		ret.Code = smtpump.SMTP_PARAMETER_NOT_IMPLEMENTED
+		ret.Message = "Address not understood, sorry."
+		return
+	}
+
+	for _, addr = range matches {
+		if len(addr) > 0 {
+			realaddr = addr
+		}
+	}
+	msg.SmtpTo = append(msg.SmtpTo, realaddr)
+	ret.Code = smtpump.SMTP_COMPLETED
+	ret.Message = "Ok."
 	return
 }
 
