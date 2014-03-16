@@ -13,7 +13,7 @@ message MailMessage {
 	required string smtp_peer = 1;
 
 	// DNS reverse record of the peer, if any.
-	optional string smtp_peer_revdns = 2;
+	repeated string smtp_peer_revdns = 2;
 
 	// TLS method information from the peer connection.
 	optional string smtp_peer_tls_info = 3;
