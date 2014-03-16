@@ -22,7 +22,7 @@ message MailMessage {
 	required string smtp_from = 4;
 
 	// RCPT To parameter from the SMTP conversation.
-	required string smtp_to = 5;
+	repeated string smtp_to = 5;
 
 	// HELO parameter from the SMTP conversation.
 	required string smtp_helo = 6;
