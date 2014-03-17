@@ -350,11 +350,31 @@ func (self smtpCallback) Etrn(conn *smtpump.SmtpConnection, domain string) (
 	return
 }
 
-// FIXME: STUB.
+// Forget all connection related data except HELO and the peer information.
 func (self smtpCallback) Reset(conn *smtpump.SmtpConnection) (
 	ret smtpump.SmtpReturnCode) {
-	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
-	ret.Message = "Not yet implemented."
+	var msg = getConnectionData(conn)
+	var peer, tlsc, helo string
+	var rdns []string
+	peer = msg.GetSmtpPeer()
+	tlsc = msg.GetSmtpPeerTlsInfo()
+	rdns = msg.GetSmtpPeerRevdns()
+	helo = msg.GetSmtpHelo()
+	msg.Reset()
+
+	msg.SmtpPeer = &peer
+	if len(tlsc) > 0 {
+		msg.SmtpPeerTlsInfo = &tlsc
+	}
+	if len(rdns) > 0 {
+		msg.SmtpPeerRevdns = make([]string, len(rdns))
+		copy(msg.SmtpPeerRevdns, rdns)
+	}
+	if len(helo) > 0 {
+		msg.SmtpHelo = &helo
+	}
+	ret.Code = smtpump.SMTP_COMPLETED
+	ret.Message = "Ok."
 	return
 }
 
