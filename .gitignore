@@ -22,4 +22,5 @@ _testmain.go
 
 *.exe
 .ditz-config
+mailstream/mailstream
 smtpump/smtpump-server/smtpump-server
