@@ -49,6 +49,7 @@ var smtp_command_timeouts = expvar.NewInt("smtp-command-timeouts")
 var smtp_bytes_in = expvar.NewInt("smtp-bytes-in")
 var smtp_bytes_out = expvar.NewInt("smtp-bytes-out")
 var smtp_active_connections = expvar.NewInt("smtp-active-connections")
+var nulldeadline time.Time = time.Unix(0, 0)
 
 // Generic SMTP return code; indicates what the server should respond
 // to the client.
@@ -80,8 +81,9 @@ type SmtpReceiver interface {
 	// Invoked when a RCPT To command is received.
 	RcptTo(conn *SmtpConnection, recipient string) SmtpReturnCode
 
-	// Invoked when a DATA command is received.
-	Data(conn *SmtpConnection, contents io.Reader) SmtpReturnCode
+	// Invoked when a DATA command is received. Should invoke
+	// GetDotReader on the connection if it is considered appropriate.
+	Data(conn *SmtpConnection) SmtpReturnCode
 
 	// Invoked when the DATA command finished.
 	DataEnd(conn *SmtpConnection) SmtpReturnCode
@@ -208,7 +210,9 @@ func (self *SmtpConnection) handleCommand(command string) SmtpReturnCode {
 				ret.Message = "DATA doesn't take parameters"
 				return ret
 			}
-			return self.cb.Data(self, self.conn.DotReader())
+			// Give the sender 10 minutes to get the message across.
+			self.origconn.SetDeadline(time.Now().Add(10 * time.Minute))
+			return self.cb.Data(self)
 		}
 	case "ETRN":
 		{
@@ -286,7 +290,7 @@ func (self *SmtpConnection) handle() {
 		}
 	}
 
-	self.origconn.SetReadDeadline(time.Unix(0, 0))
+	self.origconn.SetReadDeadline(nulldeadline)
 
 	rc = self.cb.ConnectionOpened(self, self.origconn.RemoteAddr())
 	if rc.Code != 0 {
@@ -305,7 +309,7 @@ func (self *SmtpConnection) handle() {
 		deadline = time.Now().Add(time.Minute)
 		self.origconn.SetReadDeadline(deadline)
 		cmd, err = self.conn.ReadLine()
-		self.origconn.SetReadDeadline(time.Unix(0, 0))
+		self.origconn.SetReadDeadline(nulldeadline)
 		smtp_bytes_in.Add(int64(len(cmd)))
 		if err != nil {
 			var neterr net.Error
@@ -327,6 +331,7 @@ func (self *SmtpConnection) handle() {
 		}
 
 		rc = self.handleCommand(cmd)
+		self.origconn.SetReadDeadline(nulldeadline)
 		if rc.Code > 0 {
 			self.RespondWithRCode(&rc)
 		}
@@ -355,4 +360,19 @@ func (self *SmtpConnection) SetUserdata(data interface{}) {
 // Retrieve the configured userdata for this connection.
 func (self *SmtpConnection) GetUserdata() interface{} {
 	return self.userdata
+}
+
+// Build and return a dotreader for the connection.
+func (self *SmtpConnection) GetDotReader() io.Reader {
+	return self.conn.DotReader()
+}
+
+// Report the number of bytes read from the peer during the connection.
+func (self *SmtpConnection) ReportBytesRead(length int64) {
+	smtp_bytes_in.Add(length)
+}
+
+// Report the number of bytes written to the peer during the connection.
+func (self *SmtpConnection) ReportBytesWritten(length int64) {
+	smtp_bytes_out.Add(length)
 }

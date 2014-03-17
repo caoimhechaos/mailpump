@@ -42,7 +42,8 @@ import (
 
 func main() {
 	var netname, laddr, webaddr string
-	var callback smtpCallback
+	var maxlen int64
+	var callback *smtpCallback
 	var err error
 
 	flag.StringVar(&netname, "network-type", "tcp",
@@ -51,9 +52,18 @@ func main() {
 		"IP address and port to bind to (e.g. [::]:25).")
 	flag.StringVar(&webaddr, "web-port", "[::]:8025",
 		"IP address and port to bind the web server to (e.g. [::]:8025).")
+	flag.Int64Var(&maxlen, "max-length-mb", 20,
+		"Maximum length (in megabytes) acceptable for mails to be accepted.")
 	flag.Parse()
 
-	_, err = smtpump.NewSMTPServer(netname, laddr, callback)
+	if maxlen < 1 {
+		log.Fatal("Maximum length of a mail must be 1MB or greater.")
+	}
+
+	callback = &smtpCallback{
+		maxContentLength: maxlen * 1048576,
+	}
+	_, err = smtpump.NewSMTPServer(netname, laddr, *callback)
 	if err != nil {
 		log.Fatal(err)
 	}

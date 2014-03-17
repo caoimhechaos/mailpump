@@ -35,10 +35,13 @@ package main
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"net"
+	"net/mail"
 	"reflect"
 	"regexp"
+	"time"
 
 	"ancient-solutions.com/mailpump"
 	"ancient-solutions.com/mailpump/smtpump"
@@ -46,6 +49,7 @@ import (
 
 type smtpCallback struct {
 	smtpump.SmtpReceiver
+	maxContentLength int64
 }
 
 var features = []string{"ETRN", "8BITMIME", "DSN"}
@@ -199,6 +203,7 @@ func (self smtpCallback) RcptTo(
 	if msg.SmtpFrom == nil {
 		ret.Code = smtpump.SMTP_BAD_SEQUENCE
 		ret.Message = "Need MAIL command before RCPT."
+		return
 	}
 
 	matches = rcpt_re.FindStringSubmatch(recipient)
@@ -222,12 +227,118 @@ func (self smtpCallback) RcptTo(
 	return
 }
 
-// FIXME: STUB.
-func (self smtpCallback) Data(
-	conn *smtpump.SmtpConnection, contents io.Reader) (
+// Read the data following the DATA command, up to the configured limit.
+func (self smtpCallback) Data(conn *smtpump.SmtpConnection) (
 	ret smtpump.SmtpReturnCode) {
+	var msg *mailpump.MailMessage = getConnectionData(conn)
+	var hdr string
+	var vals []string
+	var addrs []*mail.Address
+	var addr *mail.Address
+	var dotreader io.Reader
+	var contentsreader *io.LimitedReader
+	var message *mail.Message
+	var tm time.Time
+	var err error
+
+	if msg.SmtpHelo == nil {
+		ret.Code = smtpump.SMTP_BAD_SEQUENCE
+		ret.Message = "Polite people say Hello first!"
+		return
+	}
+
+	if msg.SmtpFrom == nil {
+		ret.Code = smtpump.SMTP_BAD_SEQUENCE
+		ret.Message = "Need MAIL command before DATA."
+		return
+	}
+
+	if len(msg.SmtpTo) == 0 {
+		ret.Code = smtpump.SMTP_BAD_SEQUENCE
+		ret.Message = "Need RCPT command before DATA."
+		return
+	}
+
+	conn.Respond(smtpump.SMTP_PROCEED, false, "Proceed with message.")
+
+	dotreader = conn.GetDotReader()
+	contentsreader = &io.LimitedReader{
+		R: dotreader,
+		N: self.maxContentLength + 1,
+	}
+	message, err = mail.ReadMessage(contentsreader)
+	if err != nil {
+		ret.Code = smtpump.SMTP_LOCALERR
+		ret.Message = "Unable to read message: " + err.Error()
+		// Consume all remaining output before returning an error.
+		ioutil.ReadAll(dotreader)
+		return
+	}
+
+	// See if we ran out of bytes to our limit
+	if contentsreader.N <= 0 {
+		ret.Code = smtpump.SMTP_MESSAGE_TOO_BIG
+		ret.Message = "Size limit exceeded. Thanks for playing."
+		ret.Terminate = true
+		return
+	}
+
+	msg.Body, err = ioutil.ReadAll(message.Body)
+	if err != nil {
+		ret.Code = smtpump.SMTP_LOCALERR
+		ret.Message = "Unable to parse message: " + err.Error()
+		return
+	}
+
+	for hdr, vals = range message.Header {
+		var header = new(mailpump.MailMessage_MailHeader)
+		header.Name = new(string)
+		*header.Name = hdr
+		header.Value = make([]string, len(vals))
+		copy(header.Value, vals)
+		msg.Headers = append(msg.Headers, header)
+	}
+
+	tm, err = message.Header.Date()
+	if err == nil {
+		msg.DateHdr = new(int64)
+		*msg.DateHdr = tm.Unix()
+	}
+
+	addrs, _ = message.Header.AddressList("From")
+	if len(addrs) > 0 {
+		msg.FromHdr = new(string)
+		*msg.FromHdr = addrs[0].String()
+	}
+
+	addrs, _ = message.Header.AddressList("To")
+	for _, addr = range addrs {
+		msg.ToHdr = append(msg.ToHdr, addr.String())
+	}
+
+	addrs, _ = message.Header.AddressList("Cc")
+	for _, addr = range addrs {
+		msg.CcHdrs = append(msg.CcHdrs, addr.String())
+	}
+
+	addrs, _ = message.Header.AddressList("Sender")
+	if len(addrs) > 0 {
+		msg.SenderHdr = new(string)
+		*msg.SenderHdr = addrs[0].String()
+	}
+
+	hdr = message.Header.Get("Message-Id")
+	if len(hdr) <= 0 {
+		hdr = message.Header.Get("Message-ID")
+	}
+	if len(hdr) > 0 {
+		msg.MsgidHdr = new(string)
+		*msg.MsgidHdr = hdr
+	}
+
+	// TODO(caoimhe): send this to some server.
 	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
-	ret.Message = "Not yet implemented."
+	ret.Message = "Ok, but this doesn't go anywhere yet."
 	return
 }
 
