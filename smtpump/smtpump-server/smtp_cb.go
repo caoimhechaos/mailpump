@@ -343,14 +343,6 @@ func (self smtpCallback) Data(conn *smtpump.SmtpConnection) (
 }
 
 // FIXME: STUB.
-func (self smtpCallback) DataEnd(conn *smtpump.SmtpConnection) (
-	ret smtpump.SmtpReturnCode) {
-	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
-	ret.Message = "Not yet implemented."
-	return
-}
-
-// FIXME: STUB.
 func (self smtpCallback) Etrn(conn *smtpump.SmtpConnection, domain string) (
 	ret smtpump.SmtpReturnCode) {
 	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED

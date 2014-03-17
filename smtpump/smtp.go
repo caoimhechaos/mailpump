@@ -85,9 +85,6 @@ type SmtpReceiver interface {
 	// GetDotReader on the connection if it is considered appropriate.
 	Data(conn *SmtpConnection) SmtpReturnCode
 
-	// Invoked when the DATA command finished.
-	DataEnd(conn *SmtpConnection) SmtpReturnCode
-
 	// Invoked when an ETRN command was received.
 	Etrn(conn *SmtpConnection, domain string) SmtpReturnCode
 
