@@ -378,7 +378,7 @@ func (self smtpCallback) Reset(conn *smtpump.SmtpConnection) (
 	return
 }
 
-// FIXME: STUB.
+// Close the connection with a friendly message.
 func (self smtpCallback) Quit(conn *smtpump.SmtpConnection) (
 	ret smtpump.SmtpReturnCode) {
 	ret.Code = smtpump.SMTP_CLOSING
