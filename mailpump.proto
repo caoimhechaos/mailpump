@@ -34,19 +34,22 @@ message MailMessage {
 	required string from_hdr = 8;
 
 	// Extracted To header from the e-mail headers.
-	required string to_hdr = 9;
+	repeated string to_hdr = 9;
 
 	// Extracted CC header from the e-mail headers.
 	repeated string cc_hdrs = 10;
 
+	// Extracted Date header value.
+	optional int64 date_hdr = 11;
+
 	// Extracted message ID string form the e-mail headers.
-	required string msgid_hdr = 11;
+	required string msgid_hdr = 12;
 
 	// All extracted mail headers.
-	repeated MailHeader headers = 12;
+	repeated MailHeader headers = 13;
 
 	// The full e-mail body.
-	optional bytes body = 13;
+	optional bytes body = 14;
 }
 
 message MailSubmissionResult {
