@@ -38,23 +38,22 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
-	"net/http"
+	"net/rpc"
+	"os"
 
 	"ancient-solutions.com/doozer/exportedservice"
-
-	// "net/rpc"
-	"os"
 )
 
 func main() {
+	var service *MailSubmissionService
 	var l net.Listener
 	var insecure bool
-	var certdata []byte
 	var bind string
 	var cert, key string
 	var cacert string
 	var uri, buri string
 	var srvname string
+	var spamd string
 	var err error
 
 	flag.StringVar(&bind, "bind", "[::]:0", "Port to bind the RPC server "+
@@ -69,10 +68,14 @@ func main() {
 		"Doozer URI for lock services.")
 	flag.StringVar(&buri, "doozer-boot-uri", os.Getenv("DOOZER_BOOT_URI"),
 		"Doozer boot URI for finding the right lock service cluster.")
-	flag.StringVar(&srvname, "service-naem", "mailstream",
+	flag.StringVar(&srvname, "service-name", "mailstream",
 		"Name of the exported port on the lock service.")
 	flag.BoolVar(&insecure, "insecure", false,
 		"Disable the use of client certificates (for debugging).")
+
+	// Flags for dependencies.
+	flag.StringVar(&spamd, "spamd", "localhost",
+		"host name or host:port pair of a SpamAssassin instance.")
 	flag.Parse()
 
 	if insecure {
@@ -80,6 +83,7 @@ func main() {
 	} else {
 		var tlscert tls.Certificate
 		var config *tls.Config = new(tls.Config)
+		var certdata []byte
 
 		config.ClientAuth = tls.VerifyClientCertIfGiven
 		config.MinVersion = tls.VersionTLS12
@@ -119,6 +123,16 @@ func main() {
 		}
 	}
 
+	// Create server-side service object and register with the HTTP server.
+	service = &MailSubmissionService{
+		insecure:   insecure,
+		spamd_peer: spamd,
+	}
+
+	if err = rpc.Register(service); err != nil {
+		log.Fatal("Unable to register RPC handler: ", err)
+	}
+
 	log.Print("Listening on ", l.Addr())
-	http.Serve(l, nil)
+	rpc.Accept(l)
 }

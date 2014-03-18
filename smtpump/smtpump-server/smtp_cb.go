@@ -39,6 +39,7 @@ import (
 	"log"
 	"net"
 	"net/mail"
+	"net/rpc"
 	"reflect"
 	"regexp"
 	"time"
@@ -49,6 +50,7 @@ import (
 
 type smtpCallback struct {
 	smtpump.SmtpReceiver
+	mailstreamConn   net.Conn
 	maxContentLength int64
 }
 
@@ -230,7 +232,9 @@ func (self smtpCallback) RcptTo(
 // Read the data following the DATA command, up to the configured limit.
 func (self smtpCallback) Data(conn *smtpump.SmtpConnection) (
 	ret smtpump.SmtpReturnCode) {
+	var cli *rpc.Client
 	var msg *mailpump.MailMessage = getConnectionData(conn)
+	var resp *mailpump.MailSubmissionResult
 	var hdr string
 	var vals []string
 	var addrs []*mail.Address
@@ -336,9 +340,15 @@ func (self smtpCallback) Data(conn *smtpump.SmtpConnection) (
 		*msg.MsgidHdr = hdr
 	}
 
-	// TODO(caoimhe): send this to some server.
-	ret.Code = smtpump.SMTP_NOT_IMPLEMENTED
-	ret.Message = "Ok, but this doesn't go anywhere yet."
+	cli = rpc.NewClient(self.mailstreamConn)
+	err = cli.Call("MailSubmissionService.Send", *msg, &resp)
+	if err != nil {
+		ret.Code = smtpump.SMTP_LOCALERR
+		ret.Message = "Error talking to mailstream: " + err.Error()
+	} else {
+		ret.Code = int(resp.GetErrorCode())
+		ret.Message = resp.GetErrorText()
+	}
 	return
 }
 
