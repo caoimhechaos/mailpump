@@ -33,6 +33,8 @@
 package main
 
 import (
+	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -46,12 +48,14 @@ import (
 
 	"ancient-solutions.com/mailpump"
 	"ancient-solutions.com/mailpump/smtpump"
+	"github.com/caoimhechaos/go-urlconnection"
 )
 
 type smtpCallback struct {
 	smtpump.SmtpReceiver
-	mailstreamConn   net.Conn
+	mailstreamUri    string
 	maxContentLength int64
+	tlsConfig        *tls.Config
 }
 
 var features = []string{"ETRN", "8BITMIME", "DSN"}
@@ -93,6 +97,25 @@ func getConnectionData(conn *smtpump.SmtpConnection) *mailpump.MailMessage {
 	}
 
 	return msg
+}
+
+// Establish a connection to the mailstream backend.
+func (self *smtpCallback) GetMailstreamBackend() (*net.Conn, error) {
+	var conn *net.Conn = new(net.Conn)
+	var err error
+
+	*conn, err = urlconnection.ConnectTimeout(
+		self.mailstreamUri, time.Second)
+	if err != nil {
+		return nil, errors.New("Unable to connect to mailstream on " +
+			self.mailstreamUri + ": " + err.Error())
+	}
+
+	if self.tlsConfig != nil {
+		*conn = tls.Client(*conn, self.tlsConfig)
+	}
+
+	return conn, nil
 }
 
 // Store all available information about the peer in the message structure
@@ -241,6 +264,7 @@ func (self smtpCallback) Data(conn *smtpump.SmtpConnection) (
 	var addr *mail.Address
 	var dotreader io.Reader
 	var contentsreader *io.LimitedReader
+	var mailstream_conn *net.Conn
 	var message *mail.Message
 	var tm time.Time
 	var err error
@@ -340,7 +364,12 @@ func (self smtpCallback) Data(conn *smtpump.SmtpConnection) (
 		*msg.MsgidHdr = hdr
 	}
 
-	cli = rpc.NewClient(self.mailstreamConn)
+	mailstream_conn, err = self.GetMailstreamBackend()
+	if err != nil {
+		ret.Code = smtpump.SMTP_LOCALERR
+		ret.Message = "Error connecting to mailstream: " + err.Error()
+	}
+	cli = rpc.NewClient(*mailstream_conn)
 	err = cli.Call("MailSubmissionService.Send", *msg, &resp)
 	if err != nil {
 		ret.Code = smtpump.SMTP_LOCALERR
@@ -349,6 +378,9 @@ func (self smtpCallback) Data(conn *smtpump.SmtpConnection) (
 		ret.Code = int(resp.GetErrorCode())
 		ret.Message = resp.GetErrorText()
 	}
+	// TODO(caoimhe): Reuse the connections somewhat, as reestablishing
+	// them is expensive.
+	(*mailstream_conn).Close()
 	return
 }
 

@@ -32,20 +32,99 @@
 package main
 
 import (
+	"errors"
+	"fmt"
+	"log"
+	"sync"
+
 	"ancient-solutions.com/mailpump"
 	"ancient-solutions.com/mailpump/smtpump"
+	"github.com/saintienn/go-spamc"
 )
 
 type MailSubmissionService struct {
-	insecure   bool
-	spamd_peer string
+	insecure     bool
+	spamd_peer   string
+	spamd_client *spamc.Client
+	spamd_mtx    sync.Mutex
+}
+
+func fillSmtpError(result *mailpump.MailSubmissionResult, code int32,
+	text string) {
+	result.ErrorCode = new(int32)
+	*result.ErrorCode = code
+	result.ErrorText = new(string)
+	*result.ErrorText = text
 }
 
 func (self *MailSubmissionService) Send(
 	msg mailpump.MailMessage, ret *mailpump.MailSubmissionResult) error {
-	ret.ErrorCode = new(int32)
-	*ret.ErrorCode = smtpump.SMTP_UNAVAIL
-	ret.ErrorText = new(string)
-	*ret.ErrorText = "Hello from MailSubmissionService!"
+	var res *spamc.SpamDOut
+	var rawmessage string
+	var spam_verdict *mailpump.QualityVerdict
+	var hdr *mailpump.MailMessage_MailHeader
+	var spamresult, ok bool
+	var err error
+
+	if self.spamd_client != nil {
+		res, err = self.spamd_client.Ping()
+		if err != nil {
+			log.Print("Error: ", err)
+		}
+	}
+	if res == nil || res.Code != spamc.EX_OK {
+		self.spamd_mtx.Lock()
+		// TODO(caoimhe): this will reconnect multiple times in case of
+		// lock contention, it's just good enough for testing.
+		self.spamd_client = spamc.New(self.spamd_peer, 5)
+		self.spamd_mtx.Unlock()
+	}
+
+	for _, hdr = range msg.Headers {
+		rawmessage += fmt.Sprintf("%s: %s\r\n", hdr.GetName(), hdr.GetValue())
+	}
+	rawmessage += "\r\n" + string(msg.Body)
+
+	// TODO(caoimhe): invoke spamd asynchronously and gather the result via
+	// a channel.
+	res, err = self.spamd_client.Check(rawmessage)
+	if err == nil && res.Code != spamc.EX_OK {
+		err = errors.New(spamc.SpamDError[res.Code])
+	}
+	if err != nil {
+		fillSmtpError(ret, smtpump.SMTP_LOCALERR,
+			"Error communicating with backend")
+		return nil
+	}
+
+	spam_verdict = new(mailpump.QualityVerdict)
+	spam_verdict.Source = new(string)
+	*spam_verdict.Source = "SpamAssassin"
+	spam_verdict.Score = new(float64)
+	*spam_verdict.Score, ok = res.Vars["spamScore"].(float64)
+	if !ok {
+		fillSmtpError(ret, smtpump.SMTP_LOCALERR,
+			"Error communicating with backend")
+		return nil
+	}
+
+	spamresult, ok = res.Vars["isSpam"].(bool)
+	if !ok {
+		fillSmtpError(ret, smtpump.SMTP_LOCALERR,
+			"Error communicating with backend")
+		return nil
+	}
+	spam_verdict.Verdict = new(mailpump.QualityVerdict_VerdictType)
+	if spamresult {
+		*spam_verdict.Verdict = mailpump.QualityVerdict_SPAM
+	} else {
+		*spam_verdict.Verdict = mailpump.QualityVerdict_OK
+	}
+
+	msg.Verdicts = append(msg.Verdicts, spam_verdict)
+	log.Print("Result: ", msg.String())
+
+	fillSmtpError(ret, smtpump.SMTP_UNAVAIL,
+		"Hello from MailSubmissionService!")
 	return nil
 }

@@ -1,6 +1,24 @@
 // Protobuf definitions for mailpump.
 package mailpump;
 
+// A verdict on the expected qualtiy of a message.
+message QualityVerdict {
+	// The final verdict category.
+	enum VerdictType {
+		OK = 0;
+		SPAM = 1;
+	}
+
+	// Source of the verdict.
+	required string source = 1;
+
+	// Verdict result category.
+	required VerdictType verdict = 2;
+
+	// Optional score associated with the verdict.
+	optional double score = 3;
+}
+
 // Representation of an e-mail, including important pieces of metadata.
 message MailMessage {
 	// Representation of an e-mail header.
@@ -50,6 +68,9 @@ message MailMessage {
 
 	// The full e-mail body.
 	optional bytes body = 14;
+
+	// Evaluation results from SPAM filters and similar.
+	repeated QualityVerdict verdicts = 15;
 }
 
 message MailSubmissionResult {

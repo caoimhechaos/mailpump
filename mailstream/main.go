@@ -74,8 +74,8 @@ func main() {
 		"Disable the use of client certificates (for debugging).")
 
 	// Flags for dependencies.
-	flag.StringVar(&spamd, "spamd", "localhost",
-		"host name or host:port pair of a SpamAssassin instance.")
+	flag.StringVar(&spamd, "spamd", "localhost:783",
+		"host:port pair of a SpamAssassin instance.")
 	flag.Parse()
 
 	if insecure {

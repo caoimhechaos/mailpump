@@ -38,17 +38,15 @@ import (
 	"flag"
 	"io/ioutil"
 	"log"
-	"net"
 	"net/http"
 	"os"
-	"time"
 
 	"ancient-solutions.com/mailpump/smtpump"
 	"github.com/caoimhechaos/go-urlconnection"
 )
 
 func main() {
-	var mailstream_conn net.Conn
+	var config *tls.Config
 	var netname, laddr, webaddr string
 	var maxlen int64
 	var insecure_backends bool
@@ -96,19 +94,11 @@ func main() {
 		}
 	}
 
-	// Establish a connection to the mailstream backend.
-	mailstream_conn, err = urlconnection.ConnectTimeout(
-		mailstream_uri, time.Second)
-	if err != nil {
-		log.Fatal("Unable to connect to mailstream on ", mailstream_uri,
-			": ", err)
-	}
-
 	if !insecure_backends {
 		var tlscert tls.Certificate
-		var config *tls.Config = new(tls.Config)
 		var certdata []byte
 
+		config = new(tls.Config)
 		config.MinVersion = tls.VersionTLS12
 
 		tlscert, err = tls.LoadX509KeyPair(cert, key)
@@ -126,13 +116,12 @@ func main() {
 		if !config.ClientCAs.AppendCertsFromPEM(certdata) {
 			log.Fatal("Unable to load the X.509 certificates from ", cacert)
 		}
-
-		mailstream_conn = tls.Client(mailstream_conn, config)
 	}
 
 	callback = &smtpCallback{
+		mailstreamUri:    mailstream_uri,
 		maxContentLength: maxlen * 1048576,
-		mailstreamConn:   mailstream_conn,
+		tlsConfig:        config,
 	}
 	_, err = smtpump.NewSMTPServer(netname, laddr, *callback)
 	if err != nil {
