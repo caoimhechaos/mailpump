@@ -73,12 +73,67 @@ message MailMessage {
 	repeated QualityVerdict verdicts = 15;
 }
 
+// SMTP result code to be reported back to the client.
 message MailSubmissionResult {
 	// SMTP error code to return (if appropriate).
 	optional int32 error_code = 1;
 
 	// Text representation of an error, if any.
 	optional string error_text = 2;
+}
+
+// Delivery options.
+message DomainDeliveryConfiguration {
+	// Different supported types of delivery.
+	enum DeliveryMethod {
+		// Deliver to a host via SMTP.
+		SMTP = 1;
+	}
+
+	// The domain to be accepted or delivered.
+	required string domain_name = 1;
+
+	// The method to deliver mail from mailpump to the domain.
+	required DeliveryMethod delivery_method = 2;
+
+	// Destination server for delivery methods which require one.
+	optional string destination_server = 3;
+}
+
+// The basic mailpump configuration.
+message MailPumpConfiguration {
+	// Delivery option.
+	repeated DomainDeliveryConfiguration domain_configs = 1;
+
+	// Write a log of all mail metadata to this file if given.
+	optional string log_file_pattern = 2;
+
+	// host:port pair to bind the server to.
+	required string bind_to = 3 [default=":0"];
+
+	// Path to the X.509 certificate of this service.
+	required string x509_cert = 4 [default="mailstream.crt"];
+
+	// Path to the X.509 key of this service.
+	required string x509_key = 5 [default="mailstream.key"];
+
+	// Path to the CA certificate clients will be checked against.
+	required string x509_ca_cert = 6 [default="cacert.crt"];
+
+	// Doozer URI for lock services.
+	optional string doozer_uri = 7;
+
+	// Doozer boot URI for finding the right lock service cluster.
+	optional string doozer_boot_uri = 8;
+
+	// Name of the exported port on the lock service.
+	required string service_name = 9 [default="mailstream"];
+
+	// Disable the use of client certificates (for development/debugging).
+	required bool insecure = 10 [default=false];
+
+	// host:port pair of a SpamAssassin instance.
+	required string spamd_host = 11 [default="localhost:578"];
 }
 
 service MailSubmissionService {

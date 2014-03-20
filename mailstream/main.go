@@ -39,47 +39,38 @@ import (
 	"log"
 	"net"
 	"net/rpc"
-	"os"
 
 	"ancient-solutions.com/doozer/exportedservice"
+	"ancient-solutions.com/mailpump"
+	"code.google.com/p/goprotobuf/proto"
 )
 
 func main() {
 	var service *MailSubmissionService
+	var conf *mailpump.MailPumpConfiguration
 	var l net.Listener
-	var insecure bool
-	var bind string
-	var cert, key string
-	var cacert string
-	var uri, buri string
-	var srvname string
-	var spamd string
+	var config_contents []byte
+	var configpath string
 	var err error
 
-	flag.StringVar(&bind, "bind", "[::]:0", "Port to bind the RPC server "+
-		"to. By default, a port is picked at random.")
-	flag.StringVar(&cert, "cert", "mailstream.crt",
-		"Path to the X.509 certificate of this service.")
-	flag.StringVar(&key, "key", "mailstream.key",
-		"Path to the X.509 key of this service.")
-	flag.StringVar(&cacert, "ca-certificate", "cacert.crt",
-		"Path to the CA certificate clients will be checked against.")
-	flag.StringVar(&uri, "doozer-uri", os.Getenv("DOOZER_URI"),
-		"Doozer URI for lock services.")
-	flag.StringVar(&buri, "doozer-boot-uri", os.Getenv("DOOZER_BOOT_URI"),
-		"Doozer boot URI for finding the right lock service cluster.")
-	flag.StringVar(&srvname, "service-name", "mailstream",
-		"Name of the exported port on the lock service.")
-	flag.BoolVar(&insecure, "insecure", false,
-		"Disable the use of client certificates (for debugging).")
-
-	// Flags for dependencies.
-	flag.StringVar(&spamd, "spamd", "localhost:783",
-		"host:port pair of a SpamAssassin instance.")
+	flag.StringVar(&configpath, "config-path", "mailstream.cfg",
+		"Path to the mailstream configuration file "+
+			"(an ascii protocol buffer).")
 	flag.Parse()
 
-	if insecure {
-		l, err = net.Listen("tcp", bind)
+	config_contents, err = ioutil.ReadFile(configpath)
+	if err != nil {
+		log.Fatal("Unable to read ", configpath, ": ", err)
+	}
+
+	conf = new(mailpump.MailPumpConfiguration)
+	err = proto.UnmarshalText(string(config_contents), conf)
+	if err != nil {
+		log.Fatal("Error parsing ", configpath, ": ", err)
+	}
+
+	if conf.GetInsecure() {
+		l, err = net.Listen("tcp", conf.GetBindTo())
 	} else {
 		var tlscert tls.Certificate
 		var config *tls.Config = new(tls.Config)
@@ -88,7 +79,8 @@ func main() {
 		config.ClientAuth = tls.VerifyClientCertIfGiven
 		config.MinVersion = tls.VersionTLS12
 
-		tlscert, err = tls.LoadX509KeyPair(cert, key)
+		tlscert, err = tls.LoadX509KeyPair(conf.GetX509Cert(),
+			conf.GetX509Key())
 		if err != nil {
 			log.Fatal("Unable to load X.509 key pair: ", err)
 		}
@@ -96,27 +88,30 @@ func main() {
 		config.BuildNameToCertificate()
 
 		config.ClientCAs = x509.NewCertPool()
-		certdata, err = ioutil.ReadFile(cacert)
+		certdata, err = ioutil.ReadFile(conf.GetX509CaCert())
 		if err != nil {
-			log.Fatal("Error reading ", cacert, ": ", err)
+			log.Fatal("Error reading ", conf.GetX509CaCert(), ": ", err)
 		}
 		if !config.ClientCAs.AppendCertsFromPEM(certdata) {
-			log.Fatal("Unable to load the X.509 certificates from ", cacert)
+			log.Fatal("Unable to load the X.509 certificates from ",
+				conf.GetX509CaCert())
 		}
 
-		if len(uri) > 0 {
+		if conf.DoozerUri != nil && len(conf.GetDoozerUri()) > 0 {
 			var exporter *exportedservice.ServiceExporter
-			exporter, err = exportedservice.NewExporter(uri, buri)
+			exporter, err = exportedservice.NewExporter(
+				conf.GetDoozerUri(), conf.GetDoozerBootUri())
 			if err != nil {
 				log.Fatal("Error contacting lock service: ", err)
 			}
-			l, err = exporter.NewExportedTLSPort("tcp", bind, srvname, config)
+			l, err = exporter.NewExportedTLSPort("tcp",
+				conf.GetBindTo(), conf.GetServiceName(), config)
 			if err != nil {
 				log.Fatal("Error creating exported TLS port: ", err)
 			}
 			defer exporter.UnexportPort()
 		} else {
-			l, err = tls.Listen("tcp", bind, config)
+			l, err = tls.Listen("tcp", conf.GetBindTo(), config)
 			if err != nil {
 				log.Fatal("Error creating TLS listener port: ", err)
 			}
@@ -125,8 +120,7 @@ func main() {
 
 	// Create server-side service object and register with the HTTP server.
 	service = &MailSubmissionService{
-		insecure:   insecure,
-		spamd_peer: spamd,
+		config: conf,
 	}
 
 	if err = rpc.Register(service); err != nil {

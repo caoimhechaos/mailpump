@@ -43,8 +43,7 @@ import (
 )
 
 type MailSubmissionService struct {
-	insecure     bool
-	spamd_peer   string
+	config       *mailpump.MailPumpConfiguration
 	spamd_client *spamc.Client
 	spamd_mtx    sync.Mutex
 }
@@ -76,7 +75,7 @@ func (self *MailSubmissionService) Send(
 		self.spamd_mtx.Lock()
 		// TODO(caoimhe): this will reconnect multiple times in case of
 		// lock contention, it's just good enough for testing.
-		self.spamd_client = spamc.New(self.spamd_peer, 5)
+		self.spamd_client = spamc.New(self.config.GetSpamdHost(), 5)
 		self.spamd_mtx.Unlock()
 	}
 
