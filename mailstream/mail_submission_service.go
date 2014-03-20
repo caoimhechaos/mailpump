@@ -122,6 +122,13 @@ func (self *MailSubmissionService) Send(
 	}
 
 	msg.Verdicts = append(msg.Verdicts, spam_verdict)
+
+	// TODO(caoimhe): Log the message structure somewhere.
+	if spamresult {
+		fillSmtpError(ret, smtpump.SMTP_TRANSACTION_FAILED,
+			"Reject, please keep your SPAM to yourself!")
+		return nil
+	}
 	log.Print("Result: ", msg.String())
 
 	fillSmtpError(ret, smtpump.SMTP_UNAVAIL,
