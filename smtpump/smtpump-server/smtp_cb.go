@@ -336,17 +336,17 @@ func (self smtpCallback) Data(conn *smtpump.SmtpConnection) (
 	addrs, _ = message.Header.AddressList("From")
 	if len(addrs) > 0 {
 		msg.FromHdr = new(string)
-		*msg.FromHdr = addrs[0].String()
+		*msg.FromHdr = addrs[0].Address
 	}
 
 	addrs, _ = message.Header.AddressList("To")
 	for _, addr = range addrs {
-		msg.ToHdr = append(msg.ToHdr, addr.String())
+		msg.ToHdr = append(msg.ToHdr, addr.Address)
 	}
 
 	addrs, _ = message.Header.AddressList("Cc")
 	for _, addr = range addrs {
-		msg.CcHdrs = append(msg.CcHdrs, addr.String())
+		msg.CcHdrs = append(msg.CcHdrs, addr.Address)
 	}
 
 	addrs, _ = message.Header.AddressList("Sender")
