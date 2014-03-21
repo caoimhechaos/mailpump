@@ -109,16 +109,16 @@ message MailPumpConfiguration {
 	optional string log_file_pattern = 2;
 
 	// host:port pair to bind the server to.
-	required string bind_to = 3 [default=":0"];
+	optional string bind_to = 3 [default=":0"];
 
 	// Path to the X.509 certificate of this service.
-	required string x509_cert = 4 [default="mailstream.crt"];
+	optional string x509_cert = 4 [default="mailstream.crt"];
 
 	// Path to the X.509 key of this service.
-	required string x509_key = 5 [default="mailstream.key"];
+	optional string x509_key = 5 [default="mailstream.key"];
 
 	// Path to the CA certificate clients will be checked against.
-	required string x509_ca_cert = 6 [default="cacert.crt"];
+	optional string x509_ca_cert = 6 [default="cacert.crt"];
 
 	// Doozer URI for lock services.
 	optional string doozer_uri = 7;
@@ -127,13 +127,13 @@ message MailPumpConfiguration {
 	optional string doozer_boot_uri = 8;
 
 	// Name of the exported port on the lock service.
-	required string service_name = 9 [default="mailstream"];
+	optional string service_name = 9 [default="mailstream"];
 
 	// Disable the use of client certificates (for development/debugging).
-	required bool insecure = 10 [default=false];
+	optional bool insecure = 10 [default=false];
 
 	// host:port pair of a SpamAssassin instance.
-	required string spamd_host = 11 [default="localhost:578"];
+	optional string spamd_host = 11 [default="localhost:578"];
 }
 
 service MailSubmissionService {
