@@ -33,31 +33,60 @@ package main
 
 import (
 	"errors"
+	"expvar"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
+	"time"
 
 	"ancient-solutions.com/mailpump"
 	"ancient-solutions.com/mailpump/smtpump"
 	"github.com/saintienn/go-spamc"
 )
 
+// Counts the SMTP errors which have been returned.
+var smtp_return_codes = expvar.NewMap("smtp-return-codes")
+
+// Statistics for spamd.
+var spamd_ping_errors = expvar.NewMap("spamd-ping-errors")
+var spamd_ping_requests = expvar.NewInt("spamd-ping-requests")
+var spamd_ping_timing = expvar.NewFloat("spamd-ping-timing")
+var spamd_num_reconnects = expvar.NewInt("spamd-num-reconnects")
+var spamd_num_evaluations = expvar.NewInt("spamd-num-evaluations")
+var spamd_eval_timing = expvar.NewFloat("spamd-evaluation-timing")
+var spamd_eval_errors = expvar.NewMap("spamd-evaluation-errors")
+var spamd_result_parsing_errors = expvar.NewInt("spamd-result-parsing-errors")
+var num_spam_mails = expvar.NewInt("num-mails-rejected-for-spam")
+
+// Total message processing statistics.
+var total_num_messages = expvar.NewInt("num-messages-total")
+var total_timing = expvar.NewFloat("message-timing-total")
+
+// Implementation class of the submission service itself.
 type MailSubmissionService struct {
 	config       *mailpump.MailPumpConfiguration
 	spamd_client *spamc.Client
 	spamd_mtx    sync.Mutex
 }
 
+// Put the code and text inside the submission result and do expvar
+// bookkeeping.
 func fillSmtpError(result *mailpump.MailSubmissionResult, code int32,
 	text string) {
+	smtp_return_codes.Add(strconv.Itoa(int(code)), 1)
 	result.ErrorCode = new(int32)
 	*result.ErrorCode = code
 	result.ErrorText = new(string)
 	*result.ErrorText = text
 }
 
+// Submit a message which hasn't previously been checked for validity.
+// This will run SPAM and SPF filter as well as policies before
+// attempting to deliver the mail.
 func (self *MailSubmissionService) Send(
 	msg mailpump.MailMessage, ret *mailpump.MailSubmissionResult) error {
+	var start, total_start time.Time
 	var res *spamc.SpamDOut
 	var rawmessage string
 	var spam_verdict *mailpump.QualityVerdict
@@ -65,13 +94,20 @@ func (self *MailSubmissionService) Send(
 	var spamresult, ok bool
 	var err error
 
+	total_start = time.Now()
+
 	if self.spamd_client != nil {
+		start = time.Now()
 		res, err = self.spamd_client.Ping()
+		spamd_ping_timing.Add(time.Now().Sub(start).Seconds())
+		spamd_ping_requests.Add(1)
 		if err != nil {
+			spamd_ping_errors.Add(err.Error(), 1)
 			log.Print("Error: ", err)
 		}
 	}
 	if res == nil || res.Code != spamc.EX_OK {
+		spamd_num_reconnects.Add(1)
 		self.spamd_mtx.Lock()
 		// TODO(caoimhe): this will reconnect multiple times in case of
 		// lock contention, it's just good enough for testing.
@@ -86,13 +122,21 @@ func (self *MailSubmissionService) Send(
 
 	// TODO(caoimhe): invoke spamd asynchronously and gather the result via
 	// a channel.
+	start = time.Now()
 	res, err = self.spamd_client.Check(rawmessage)
+	spamd_eval_timing.Add(time.Now().Sub(start).Seconds())
+	spamd_num_evaluations.Add(1)
 	if err == nil && res.Code != spamc.EX_OK {
 		err = errors.New(spamc.SpamDError[res.Code])
+	} else if err != nil {
+		log.Print("Error talking to spamd: ", err)
 	}
 	if err != nil {
+		spamd_eval_errors.Add(err.Error(), 1)
 		fillSmtpError(ret, smtpump.SMTP_LOCALERR,
 			"Error communicating with backend")
+		total_num_messages.Add(1)
+		total_timing.Add(time.Now().Sub(total_start).Seconds())
 		return nil
 	}
 
@@ -102,19 +146,28 @@ func (self *MailSubmissionService) Send(
 	spam_verdict.Score = new(float64)
 	*spam_verdict.Score, ok = res.Vars["spamScore"].(float64)
 	if !ok {
+		spamd_result_parsing_errors.Add(1)
+		log.Print("Unable to determine SPAM score (", res.Vars, ")")
 		fillSmtpError(ret, smtpump.SMTP_LOCALERR,
 			"Error communicating with backend")
+		total_num_messages.Add(1)
+		total_timing.Add(time.Now().Sub(total_start).Seconds())
 		return nil
 	}
 
 	spamresult, ok = res.Vars["isSpam"].(bool)
 	if !ok {
+		spamd_result_parsing_errors.Add(1)
+		log.Print("Unable to determine SPAM flag (", res.Vars, ")")
 		fillSmtpError(ret, smtpump.SMTP_LOCALERR,
 			"Error communicating with backend")
+		total_num_messages.Add(1)
+		total_timing.Add(time.Now().Sub(total_start).Seconds())
 		return nil
 	}
 	spam_verdict.Verdict = new(mailpump.QualityVerdict_VerdictType)
 	if spamresult {
+		num_spam_mails.Add(1)
 		*spam_verdict.Verdict = mailpump.QualityVerdict_SPAM
 	} else {
 		*spam_verdict.Verdict = mailpump.QualityVerdict_OK
@@ -126,11 +179,15 @@ func (self *MailSubmissionService) Send(
 	if spamresult {
 		fillSmtpError(ret, smtpump.SMTP_TRANSACTION_FAILED,
 			"Reject, please keep your SPAM to yourself!")
+		total_num_messages.Add(1)
+		total_timing.Add(time.Now().Sub(total_start).Seconds())
 		return nil
 	}
 	log.Print("Result: ", msg.String())
 
 	fillSmtpError(ret, smtpump.SMTP_UNAVAIL,
 		"Hello from MailSubmissionService!")
+	total_num_messages.Add(1)
+	total_timing.Add(time.Now().Sub(total_start).Seconds())
 	return nil
 }
