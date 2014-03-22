@@ -133,7 +133,7 @@ message MailPumpConfiguration {
 	optional bool insecure = 10 [default=false];
 
 	// host:port pair of a SpamAssassin instance.
-	optional string spamd_host = 11 [default="localhost:578"];
+	optional string spamd_host = 11 [default="localhost:783"];
 }
 
 service MailSubmissionService {
