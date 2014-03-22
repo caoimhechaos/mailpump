@@ -39,6 +39,7 @@ import (
 	"log"
 	"net"
 	"net/rpc"
+	"os"
 
 	"ancient-solutions.com/doozer/exportedservice"
 	"ancient-solutions.com/mailpump"
@@ -67,6 +68,16 @@ func main() {
 	err = proto.UnmarshalText(string(config_contents), conf)
 	if err != nil {
 		log.Fatal("Error parsing ", configpath, ": ", err)
+	}
+
+	if conf.DoozerUri == nil && len(os.Getenv("DOOZER_URI")) > 0 {
+		conf.DoozerUri = new(string)
+		*conf.DoozerUri = os.Getenv("DOOZER_URI")
+	}
+
+	if conf.DoozerBootUri == nil && len(os.Getenv("DOOZER_BOOT_URI")) > 0 {
+		conf.DoozerBootUri = new(string)
+		*conf.DoozerBootUri = os.Getenv("DOOZER_BOOT_URI")
 	}
 
 	if conf.GetInsecure() {
